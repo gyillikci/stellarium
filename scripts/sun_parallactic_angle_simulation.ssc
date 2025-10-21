@@ -89,10 +89,13 @@ core.output("  Sample Interval: " + (SAMPLE_INTERVAL_SEC * 1000).toFixed(1) + " 
 core.output("  Total Frames: " + TOTAL_FRAMES);
 core.output("");
 core.output("OBSERVER LOCATION:");
-var loc = core.getObserverLocation();
-core.output("  Latitude: " + loc.latitude.toFixed(2) + "°");
-core.output("  Longitude: " + loc.longitude.toFixed(2) + "°");
-core.output("  Altitude: " + loc.altitude + " m");
+var loc = core.getObserverLocationInfo();
+var lat = parseFloat(loc["latitude"]);
+var lon = parseFloat(loc["longitude"]);
+var alt = loc["altitude"];
+core.output("  Latitude: " + lat.toFixed(2) + "°");
+core.output("  Longitude: " + lon.toFixed(2) + "°");
+core.output("  Altitude: " + alt + " m");
 core.output("");
 core.output("═══════════════════════════════════════════════════════════════");
 core.output("");
