@@ -1,0 +1,236 @@
+//
+// Name: Sun Parallactic Angle Camera Simulation
+// Author: Claude (AI Assistant)
+// License: Public Domain
+// Version: 1.0
+// Description: Simulates detection of Sun's parallactic angle changes with an 8MP camera (1° FOV)
+//              Calculates rotational resolution and tracks parallactic angle over time.
+//
+
+// ============================================================================
+// CAMERA SPECIFICATIONS
+// ============================================================================
+var CAMERA_PIXELS = 8000000;  // 8 million pixels
+var CAMERA_FOV_DEG = 1.0;     // 1 degree field of view
+var PIXELS_PER_SIDE = Math.sqrt(CAMERA_PIXELS);  // ~2828 pixels
+var ARCSEC_PER_PIXEL = (CAMERA_FOV_DEG * 3600) / PIXELS_PER_SIDE;  // ~1.27 arcsec/pixel
+var SUN_DIAMETER_DEG = 0.5;   // Sun's angular diameter in degrees
+var SUN_RADIUS_PIXELS = (SUN_DIAMETER_DEG / CAMERA_FOV_DEG) * PIXELS_PER_SIDE / 2;  // ~707 pixels
+
+// Detection thresholds (in pixels at limb)
+var PIXEL_PRECISION_BASIC = 1.0;      // Basic edge detection
+var PIXEL_PRECISION_CENTROID = 0.1;   // Centroiding on features
+var PIXEL_PRECISION_ADVANCED = 0.01;  // Cross-correlation
+
+// Calculate rotational resolution (in arcseconds)
+var ROT_RES_BASIC = (PIXEL_PRECISION_BASIC / SUN_RADIUS_PIXELS) * (CAMERA_FOV_DEG * 3600);
+var ROT_RES_CENTROID = (PIXEL_PRECISION_CENTROID / SUN_RADIUS_PIXELS) * (CAMERA_FOV_DEG * 3600);
+var ROT_RES_ADVANCED = (PIXEL_PRECISION_ADVANCED / SUN_RADIUS_PIXELS) * (CAMERA_FOV_DEG * 3600);
+
+// ============================================================================
+// SIMULATION PARAMETERS
+// ============================================================================
+var FRAME_RATE = 30;          // frames per second (adjustable: try 1, 10, 30, 60)
+var DURATION_HOURS = 6;       // simulation duration in hours
+var SAMPLE_INTERVAL_SEC = 1.0 / FRAME_RATE;  // time between frames
+var TOTAL_FRAMES = Math.floor(DURATION_HOURS * 3600 * FRAME_RATE);
+
+// ============================================================================
+// SETUP
+// ============================================================================
+core.clear("natural");
+core.setGuiVisible(false);
+SolarSystem.setFlagLabels(true);
+LandscapeMgr.setFlagAtmosphere(true);
+LandscapeMgr.setFlagLandscape(true);
+GridLinesMgr.setFlagAzimuthalGrid(true);
+
+// Set location (you can modify this)
+// Default: mid-latitude Northern Hemisphere
+core.setObserverLocation(0.0, 40.0, 100, 0, "Camera Test Location", "Earth");
+
+// Set initial time to sunrise (Sun at low altitude for maximum parallactic angle change)
+// Using a date in equinox season for typical behavior
+core.setDate("2024-03-20T06:00:00", "utc", false);
+
+// Select and track the Sun
+core.selectObjectByName("Sun", false);
+StelMovementMgr.setFlagTracking(true);
+StelMovementMgr.zoomTo(CAMERA_FOV_DEG, 1);
+core.wait(2);
+
+// ============================================================================
+// DISPLAY CAMERA SPECS
+// ============================================================================
+core.output("═══════════════════════════════════════════════════════════════");
+core.output("  SUN PARALLACTIC ANGLE CAMERA SIMULATION");
+core.output("═══════════════════════════════════════════════════════════════");
+core.output("");
+core.output("CAMERA SPECIFICATIONS:");
+core.output("  Sensor: " + CAMERA_PIXELS.toExponential(1) + " pixels (" +
+            Math.round(PIXELS_PER_SIDE) + " × " + Math.round(PIXELS_PER_SIDE) + ")");
+core.output("  Field of View: " + CAMERA_FOV_DEG.toFixed(2) + "°");
+core.output("  Angular Resolution: " + ARCSEC_PER_PIXEL.toFixed(2) + " arcsec/pixel");
+core.output("  Sun Diameter in Frame: " + Math.round(SUN_RADIUS_PIXELS * 2) + " pixels");
+core.output("  Sun Radius in Frame: " + Math.round(SUN_RADIUS_PIXELS) + " pixels");
+core.output("");
+core.output("ROTATIONAL RESOLUTION (at Sun's limb):");
+core.output("  Basic (1 pixel precision):     " + ROT_RES_BASIC.toFixed(2) + " arcsec (" +
+            (ROT_RES_BASIC/3600).toFixed(4) + "°)");
+core.output("  Centroiding (0.1 px precision): " + ROT_RES_CENTROID.toFixed(2) + " arcsec (" +
+            (ROT_RES_CENTROID/3600).toFixed(5) + "°)");
+core.output("  Advanced (0.01 px precision):   " + ROT_RES_ADVANCED.toFixed(3) + " arcsec (" +
+            (ROT_RES_ADVANCED/3600).toFixed(6) + "°)");
+core.output("");
+core.output("SIMULATION PARAMETERS:");
+core.output("  Frame Rate: " + FRAME_RATE + " fps");
+core.output("  Duration: " + DURATION_HOURS + " hours");
+core.output("  Sample Interval: " + (SAMPLE_INTERVAL_SEC * 1000).toFixed(1) + " ms");
+core.output("  Total Frames: " + TOTAL_FRAMES);
+core.output("");
+core.output("OBSERVER LOCATION:");
+var loc = core.getObserverLocation();
+core.output("  Latitude: " + loc.latitude.toFixed(2) + "°");
+core.output("  Longitude: " + loc.longitude.toFixed(2) + "°");
+core.output("  Altitude: " + loc.altitude + " m");
+core.output("");
+core.output("═══════════════════════════════════════════════════════════════");
+core.output("");
+core.wait(1);
+
+// ============================================================================
+// SIMULATION LOOP
+// ============================================================================
+core.output("Starting simulation...");
+core.output("");
+core.output("Time (UTC) | Altitude | Azimuth | Par.Angle | ΔAngle/frame | Frames to detect");
+core.output("           |   (deg)  |  (deg)  |   (deg)   |   (arcsec)   | (centroid 0.1px)");
+core.output("------------------------------------------------------------------------");
+
+var prevParallacticAngle = null;
+var maxChangePerFrame = 0;
+var minChangePerFrame = 999999;
+var totalChange = 0;
+var frameCount = 0;
+
+// Sample at lower frequency for display (every N frames)
+var DISPLAY_EVERY_N_FRAMES = Math.max(1, Math.floor(TOTAL_FRAMES / 100));
+
+for (var frame = 0; frame < TOTAL_FRAMES; frame++) {
+    // Get Sun info
+    var sunInfo = core.getSelectedObjectInfo();
+    var parallacticAngle = sunInfo["parallacticAngle"];
+    var altitude = sunInfo["altitude"];
+    var azimuth = sunInfo["azimuth"];
+
+    // Calculate change since last frame
+    var changePerFrame = 0;
+    var framesToDetect = "N/A";
+
+    if (prevParallacticAngle !== null) {
+        // Change in degrees
+        var changeDeg = parallacticAngle - prevParallacticAngle;
+        // Convert to arcseconds
+        changePerFrame = Math.abs(changeDeg * 3600);
+
+        // Track statistics
+        if (changePerFrame > maxChangePerFrame) maxChangePerFrame = changePerFrame;
+        if (changePerFrame < minChangePerFrame && changePerFrame > 0) minChangePerFrame = changePerFrame;
+        totalChange += changePerFrame;
+        frameCount++;
+
+        // Calculate frames needed to detect with centroiding precision
+        if (changePerFrame > 0) {
+            framesToDetect = Math.ceil(ROT_RES_CENTROID / changePerFrame);
+        }
+    }
+
+    // Display every N frames
+    if (frame % DISPLAY_EVERY_N_FRAMES === 0 && sunInfo["above-horizon"]) {
+        var timeStr = core.getDate("utc");
+        core.output(timeStr.substring(11, 19) + " | " +
+                   altitude.toFixed(2).padStart(8) + " | " +
+                   azimuth.toFixed(2).padStart(7) + " | " +
+                   parallacticAngle.toFixed(3).padStart(9) + " | " +
+                   changePerFrame.toFixed(4).padStart(12) + " | " +
+                   String(framesToDetect).padStart(16));
+    }
+
+    prevParallacticAngle = parallacticAngle;
+
+    // Advance time
+    core.setDate("+" + SAMPLE_INTERVAL_SEC + " seconds");
+
+    // Brief wait every 100 frames to prevent overwhelming
+    if (frame % 100 === 0) {
+        core.wait(0.01);
+    }
+}
+
+// ============================================================================
+// RESULTS SUMMARY
+// ============================================================================
+core.output("");
+core.output("═══════════════════════════════════════════════════════════════");
+core.output("  SIMULATION RESULTS");
+core.output("═══════════════════════════════════════════════════════════════");
+core.output("");
+
+if (frameCount > 0) {
+    var avgChangePerFrame = totalChange / frameCount;
+
+    core.output("PARALLACTIC ANGLE CHANGE STATISTICS:");
+    core.output("  Maximum change per frame: " + maxChangePerFrame.toFixed(4) + " arcsec");
+    core.output("  Minimum change per frame: " + minChangePerFrame.toFixed(4) + " arcsec");
+    core.output("  Average change per frame: " + avgChangePerFrame.toFixed(4) + " arcsec");
+    core.output("");
+
+    core.output("DETECTION CAPABILITY:");
+    core.output("  With BASIC precision (1 pixel = " + ROT_RES_BASIC.toFixed(2) + " arcsec):");
+    core.output("    Average frames to detect: " + Math.ceil(ROT_RES_BASIC / avgChangePerFrame));
+    core.output("    Best case (max change): " + Math.ceil(ROT_RES_BASIC / maxChangePerFrame) + " frames");
+    core.output("");
+    core.output("  With CENTROIDING precision (0.1 pixel = " + ROT_RES_CENTROID.toFixed(2) + " arcsec):");
+    core.output("    Average frames to detect: " + Math.ceil(ROT_RES_CENTROID / avgChangePerFrame));
+    core.output("    Best case (max change): " + Math.ceil(ROT_RES_CENTROID / maxChangePerFrame) + " frames");
+    core.output("");
+    core.output("  With ADVANCED precision (0.01 pixel = " + ROT_RES_ADVANCED.toFixed(3) + " arcsec):");
+    core.output("    Average frames to detect: " + Math.ceil(ROT_RES_ADVANCED / avgChangePerFrame));
+    core.output("    Best case (max change): " + Math.ceil(ROT_RES_ADVANCED / maxChangePerFrame) + " frames");
+    core.output("");
+
+    // Time to detect
+    var timeBasic = (Math.ceil(ROT_RES_BASIC / avgChangePerFrame) * SAMPLE_INTERVAL_SEC).toFixed(2);
+    var timeCentroid = (Math.ceil(ROT_RES_CENTROID / avgChangePerFrame) * SAMPLE_INTERVAL_SEC).toFixed(2);
+    var timeAdvanced = (Math.ceil(ROT_RES_ADVANCED / avgChangePerFrame) * SAMPLE_INTERVAL_SEC).toFixed(3);
+
+    core.output("TIME TO DETECT (average):");
+    core.output("  Basic method: " + timeBasic + " seconds");
+    core.output("  Centroiding method: " + timeCentroid + " seconds");
+    core.output("  Advanced method: " + timeAdvanced + " seconds");
+    core.output("");
+
+    core.output("RECOMMENDATION:");
+    if (avgChangePerFrame > ROT_RES_CENTROID) {
+        core.output("  ✓ Changes are EASILY detectable with centroiding (sub-pixel) techniques");
+        core.output("  ✓ Each frame captures measurable rotation");
+    } else if (avgChangePerFrame > ROT_RES_ADVANCED) {
+        core.output("  ✓ Changes require ADVANCED processing (cross-correlation)");
+        core.output("  ✓ Detection possible within " + Math.ceil(ROT_RES_ADVANCED / avgChangePerFrame) + " consecutive frames");
+    } else {
+        core.output("  ! Changes are very small - consider:");
+        core.output("    - Lower frame rate (more time between samples)");
+        core.output("    - Observe during periods of rapid change (sunrise/sunset)");
+        core.output("    - Use higher resolution camera or narrower FOV");
+    }
+}
+
+core.output("");
+core.output("═══════════════════════════════════════════════════════════════");
+core.output("Simulation complete!");
+core.output("");
+
+// Reset view
+core.setGuiVisible(true);
+GridLinesMgr.setFlagAzimuthalGrid(false);
+SolarSystem.setFlagLabels(false);
