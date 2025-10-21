@@ -1,0 +1,138 @@
+//
+// Name: Sun Parallactic Angle Quick Test
+// Author: Claude (AI Assistant)
+// License: Public Domain
+// Version: 1.0
+// Description: Quick test showing parallactic angle at different times of day
+//              Useful for understanding when changes are fastest
+//
+
+// Camera specs
+var CAMERA_PIXELS = 8000000;
+var CAMERA_FOV_DEG = 1.0;
+var PIXELS_PER_SIDE = Math.sqrt(CAMERA_PIXELS);
+var SUN_RADIUS_PIXELS = (0.5 / CAMERA_FOV_DEG) * PIXELS_PER_SIDE / 2;
+var ROT_RES_CENTROID = (0.1 / SUN_RADIUS_PIXELS) * (CAMERA_FOV_DEG * 3600);
+
+core.clear("natural");
+core.setGuiVisible(false);
+SolarSystem.setFlagLabels(true);
+LandscapeMgr.setFlagAtmosphere(true);
+GridLinesMgr.setFlagAzimuthalGrid(true);
+
+// Set location
+core.setObserverLocation(0.0, 40.0, 100, 0, "Test Location", "Earth");
+
+core.output("═══════════════════════════════════════════════════════════════");
+core.output("  SUN PARALLACTIC ANGLE - QUICK TEST");
+core.output("═══════════════════════════════════════════════════════════════");
+core.output("");
+core.output("Testing parallactic angle changes at different times of day");
+core.output("Camera: 8MP, 1° FOV, Centroid precision: " + ROT_RES_CENTROID.toFixed(2) + " arcsec");
+core.output("");
+
+// Test times: sunrise, mid-morning, noon, mid-afternoon, sunset
+var testTimes = [
+    "2024-03-20T06:00:00",  // Sunrise
+    "2024-03-20T09:00:00",  // Mid-morning
+    "2024-03-20T12:00:00",  // Noon
+    "2024-03-20T15:00:00",  // Mid-afternoon
+    "2024-03-20T18:00:00"   // Sunset
+];
+
+var testLabels = ["Sunrise", "Mid-morning", "Noon", "Mid-afternoon", "Sunset"];
+
+core.selectObjectByName("Sun", false);
+StelMovementMgr.setFlagTracking(true);
+StelMovementMgr.zoomTo(CAMERA_FOV_DEG, 0.5);
+
+core.output("Time Period    | Par.Angle | Altitude | Change/min | Frames to detect");
+core.output("               |   (deg)   |  (deg)   |  (arcsec)  | (30fps, centroid)");
+core.output("----------------------------------------------------------------------");
+
+var prevAngle = null;
+var prevTime = null;
+
+for (var i = 0; i < testTimes.length; i++) {
+    core.setDate(testTimes[i], "utc", false);
+    core.wait(0.5);
+
+    var sunInfo = core.getSelectedObjectInfo();
+
+    if (sunInfo["above-horizon"]) {
+        var parallacticAngle = sunInfo["parallacticAngle"];
+        var altitude = sunInfo["altitude"];
+
+        var changePerMin = "N/A";
+        var framesToDetect = "N/A";
+
+        if (prevAngle !== null) {
+            // Change over the time interval
+            var angleDiff = Math.abs(parallacticAngle - prevAngle);
+            var timeDiff = (new Date(testTimes[i]) - new Date(prevTime)) / 1000 / 60; // minutes
+
+            changePerMin = (angleDiff / timeDiff * 3600).toFixed(2); // arcsec/min
+
+            // At 30 fps, change per frame
+            var changePerFrame = (angleDiff / timeDiff) * (1.0 / 60.0 / 30.0) * 3600; // arcsec
+            if (changePerFrame > 0) {
+                framesToDetect = Math.ceil(ROT_RES_CENTROID / changePerFrame);
+            }
+        }
+
+        core.output(testLabels[i].padEnd(14) + " | " +
+                   parallacticAngle.toFixed(3).padStart(9) + " | " +
+                   altitude.toFixed(2).padStart(8) + " | " +
+                   String(changePerMin).padStart(10) + " | " +
+                   String(framesToDetect).padStart(17));
+
+        prevAngle = parallacticAngle;
+        prevTime = testTimes[i];
+    } else {
+        core.output(testLabels[i].padEnd(14) + " | Sun below horizon");
+    }
+}
+
+core.output("");
+core.output("═══════════════════════════════════════════════════════════════");
+core.output("");
+core.output("KEY FINDINGS:");
+core.output("• Parallactic angle changes FASTEST near sunrise/sunset");
+core.output("• Changes are SLOWEST when Sun crosses meridian (noon)");
+core.output("• For best results, observe during morning or evening hours");
+core.output("");
+
+// Visual demonstration
+core.output("Running visual demonstration...");
+core.output("(Showing Sun position with parallactic angle at 3 key times)");
+core.output("");
+
+var demoTimes = ["2024-03-20T07:00:00", "2024-03-20T12:00:00", "2024-03-20T17:00:00"];
+var demoLabels = ["Morning (7 AM)", "Noon (12 PM)", "Evening (5 PM)"];
+
+for (var i = 0; i < demoTimes.length; i++) {
+    core.setDate(demoTimes[i], "utc", false);
+    StelMovementMgr.zoomTo(60, 1);
+    core.wait(1);
+
+    var sunInfo = core.getSelectedObjectInfo();
+    if (sunInfo["above-horizon"]) {
+        var label = LabelMgr.labelScreen(
+            demoLabels[i] + "\nParallactic Angle: " +
+            sunInfo["parallacticAngle"].toFixed(2) + "°\nAltitude: " +
+            sunInfo["altitude"].toFixed(1) + "°",
+            400, 100, false, 24, "#FFAA00"
+        );
+        LabelMgr.setLabelShow(label, true);
+
+        StelMovementMgr.zoomTo(CAMERA_FOV_DEG, 2);
+        core.wait(3);
+
+        LabelMgr.setLabelShow(label, false);
+        LabelMgr.deleteLabel(label);
+    }
+}
+
+core.output("Test complete!");
+core.setGuiVisible(true);
+GridLinesMgr.setFlagAzimuthalGrid(false);
