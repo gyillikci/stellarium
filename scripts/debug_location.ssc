@@ -1,0 +1,26 @@
+//
+// Debug script to check location info
+//
+
+core.output("Testing getObserverLocationInfo()...");
+var loc = core.getObserverLocationInfo();
+
+// Print the whole map
+core.output("Full location map:");
+core.output(core.mapToString(loc));
+
+core.output("");
+core.output("Individual fields:");
+core.output("Type of latitude: " + typeof(loc["latitude"]));
+core.output("Latitude value: " + loc["latitude"]);
+core.output("Type of longitude: " + typeof(loc["longitude"]));
+core.output("Longitude value: " + loc["longitude"]);
+core.output("Type of altitude: " + typeof(loc["altitude"]));
+core.output("Altitude value: " + loc["altitude"]);
+
+// Try conversion
+if (loc["latitude"] !== undefined) {
+    var lat = parseFloat(loc["latitude"]);
+    core.output("Parsed latitude: " + lat);
+    core.output("Formatted: " + lat.toFixed(2));
+}
